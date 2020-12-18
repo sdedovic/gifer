@@ -11,7 +11,7 @@ const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 const PALETTE_DIR: &'static str = "/tmp/gifer/";
 const PALETTE_FILE: &'static str = "/tmp/gifer/palette.png";
 
-fn main() -> Result<(), Error> {
+fn main() -> Result<()> {
 
     // Build Command Line Interface
     // ============================
@@ -100,7 +100,7 @@ fn main() -> Result<(), Error> {
 fn run_command(command: &mut Command) -> Result<()> {
     let child = command
         .stdin(Stdio::null())
-        .stdout(Stdio::piped())
+        .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()?;
 
