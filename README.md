@@ -1,7 +1,10 @@
 # Gifer
 Utility for creating web-friendly gifs
 
-Very much in alpha and for my own usage.
+![](./examples/output-1.gif)
+
+
+**Very much in alpha and for my own usage.**
 
 ## Usage
 ```
@@ -45,4 +48,5 @@ cargo run -- --help
 
 ## License
 Copyright © Stevan Dedovic
+
 Distributed under the MIT License.
