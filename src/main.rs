@@ -1,7 +1,8 @@
 #![feature(bool_to_option)]
-use anyhow::{anyhow, Context, Error, Result};
+use anyhow::{anyhow, ensure, Context, Result};
 use clap::{App, AppSettings, Arg};
 use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
@@ -11,11 +12,73 @@ const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 const PALETTE_DIR: &'static str = "/tmp/gifer/";
 const PALETTE_FILE: &'static str = "/tmp/gifer/palette.png";
 
-fn main() -> Result<()> {
-    // Build Command Line Interface
-    // ============================
+struct RunOptions {
+    input: PathBuf,
+    output: PathBuf,
+}
 
-    let matches = App::new("gifer")
+fn main() -> Result<()> {
+    let app = build_cli();
+    let opts = get_options(app)?;
+
+    // Make GIF Palette
+    // ==============================
+
+    fs::create_dir_all(PALETTE_DIR)
+        .context("Failed to create temporary directory for palette output")?;
+
+    let mut palette_gen = Command::new("ffmpeg");
+    palette_gen
+        .arg("-y")// no prompt
+        .arg("-i")
+        .arg(opts.input.as_os_str())
+        .arg("-vf")
+        .arg("fps=30,scale=320:-1:flags=lanczos,palettegen=stats_mode=diff")
+        .arg(PALETTE_FILE);
+
+    run_command(&mut palette_gen).context("Error using FFmpeg")?;
+
+    // Make GIF
+    // ==============================
+
+    let mut palette_gen = Command::new("ffmpeg");
+    palette_gen
+        .arg("-y") // no prompt
+        .arg("-i")
+        .arg(opts.input.as_os_str())
+        .arg("-i")
+        .arg(PALETTE_FILE)
+        .arg("-lavfi")
+        .arg("fps=30,scale=320:-1:flags=lanczos [x]; [x][1:v] paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle")
+        .arg(opts.output.as_os_str());
+
+    run_command(&mut palette_gen).context("Error using FFmpeg")?;
+
+    Ok(())
+}
+
+fn get_options(app: App) -> Result<RunOptions> {
+    let matches = app.get_matches();
+
+    let input = matches
+        .value_of("input")
+        .map(Path::new)
+        .ok_or(anyhow!("Failed to parse input"))?;
+    ensure!(input.is_file(), "Input is not a valid file");
+
+    let output = matches
+        .value_of("output")
+        .map(Path::new)
+        .ok_or(anyhow!("Failed to parse output"))?;
+
+    Ok(RunOptions {
+        input: input.to_owned(),
+        output: output.to_owned(),
+    })
+}
+
+fn build_cli() -> App<'static, 'static> {
+    return App::new("gifer")
         .version(VERSION)
         .about("Utility for creating web-friendly gifs.")
         .author("Stevan Dedovic <stevan@dedovic.com>")
@@ -34,68 +97,7 @@ fn main() -> Result<()> {
                 .help("Sets the output file to write")
                 .value_name("OUTFILE")
                 .required(true),
-        )
-        .get_matches();
-
-    // Validate "--input" Argument
-    // =========================
-
-    let input = matches
-        .value_of("input")
-        .ok_or(anyhow!("Failed to parse input"))?;
-
-    let metadata =
-        fs::metadata(input).with_context(|| format!("Failed to read input {}", input))?;
-
-    metadata
-        .is_file()
-        .then_some(())
-        .ok_or(anyhow!("Value is not a file"))
-        .with_context(|| format!("Failed to read input {}", input))?;
-
-    // Validate OUTPUT Argument
-    // =========================
-
-    let output = matches
-        .value_of("output")
-        .ok_or(anyhow!("Failed to parse output"))?;
-
-    // Make GIF Palette
-    // ==============================
-
-    fs::create_dir_all(PALETTE_DIR)
-        .context("Failed to create temporary directory for palette output")?;
-
-    let mut palette_gen = Command::new("ffmpeg");
-    palette_gen
-        .arg("-y") // no prompt
-        .arg("-i")
-        .arg(input)
-        .arg("-filter_complex")
-        .arg("[0:v] palettegen")
-        .arg(PALETTE_FILE);
-
-    run_command(&mut palette_gen).context("Error using FFmpeg")?;
-
-    // Make GIF
-    // ==============================
-
-    let mut palette_gen = Command::new("ffmpeg");
-    palette_gen
-        .arg("-y") // no prompt
-        .arg("-i")
-        .arg(input)
-        .arg("-i")
-        .arg(PALETTE_FILE)
-        .arg("-lavfi")
-        .arg("paletteuse=alpha_threshold=128")
-        .arg("-gifflags")
-        .arg("-offsetting")
-        .arg(output);
-
-    run_command(&mut palette_gen).context("Error using FFmpeg")?;
-
-    Ok(())
+        );
 }
 
 fn run_command(command: &mut Command) -> Result<()> {
