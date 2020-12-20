@@ -2,15 +2,15 @@
 use anyhow::{anyhow, ensure, Context, Result};
 use clap::{App, AppSettings, Arg};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // TODO: combine these
 // TODO: dynamically generate palette file name so I can execute multiple concurrently
-const PALETTE_DIR: &'static str = "/tmp/gifer/";
-const PALETTE_FILE: &'static str = "/tmp/gifer/palette.png";
+const PALETTE_DIR: &str = "/tmp/gifer/";
+const PALETTE_FILE: &str = "/tmp/gifer/palette.png";
 
 struct RunOptions {
     input: PathBuf,
@@ -19,7 +19,7 @@ struct RunOptions {
 
 fn main() -> Result<()> {
     let app = build_cli();
-    let opts = get_options(app)?;
+    let opts = get_options(app).context("Failed to interpret options")?;
 
     // Make GIF Palette
     // ==============================
@@ -29,7 +29,7 @@ fn main() -> Result<()> {
 
     let mut palette_gen = Command::new("ffmpeg");
     palette_gen
-        .arg("-y")// no prompt
+        .arg("-y") // no prompt
         .arg("-i")
         .arg(opts.input.as_os_str())
         .arg("-vf")
@@ -62,19 +62,16 @@ fn get_options(app: App) -> Result<RunOptions> {
 
     let input = matches
         .value_of("input")
-        .map(Path::new)
-        .ok_or(anyhow!("Failed to parse input"))?;
+        .map(PathBuf::from)
+        .ok_or_else(|| anyhow!("Failed to parse input arg"))?;
     ensure!(input.is_file(), "Input is not a valid file");
 
     let output = matches
         .value_of("output")
-        .map(Path::new)
-        .ok_or(anyhow!("Failed to parse output"))?;
+        .map(PathBuf::from)
+        .ok_or_else(|| anyhow!("Failed to parse output value"))?;
 
-    Ok(RunOptions {
-        input: input.to_owned(),
-        output: output.to_owned(),
-    })
+    Ok(RunOptions { input, output })
 }
 
 fn build_cli() -> App<'static, 'static> {
@@ -114,9 +111,9 @@ fn run_command(command: &mut Command) -> Result<()> {
     let status = output
         .status
         .code()
-        .ok_or(anyhow!("Unable to interpret status code"))?;
+        .ok_or_else(|| anyhow!("Unable to interpret status code"))?;
 
     (status == 0)
         .then_some(())
-        .ok_or(anyhow!("Bad status code of {:}\n{:}", status, stderr))
+        .ok_or_else(|| anyhow!("Bad status code of {:}\n{:}", status, stderr))
 }
